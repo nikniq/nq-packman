@@ -5,6 +5,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
         <meta name="description" content="Packman: a maze chase arcade game. Eat every dot, dodge four ghosts, and turn the tables with power pellets.">
         <meta name="theme-color" content="#000000">
+        <link rel="icon" href="{{ asset('icon.svg') }}" type="image/svg+xml">
+        <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
 
         <title>{{ config('app.name', 'Packman') }}</title>
 
@@ -35,8 +37,11 @@
             </div>
 
             <footer class="flex items-center justify-between gap-3 text-[9px] sm:text-[10px]">
-                <div id="lives" class="flex min-h-5 min-w-16 items-center gap-1.5" role="img" aria-label="2 spare lives"></div>
-                <p class="hidden text-center leading-relaxed text-arcade-dim md:block">ARROWS OR WASD TO MOVE · P PAUSE · M SOUND</p>
+                <div class="flex min-h-5 items-center gap-3">
+                    <div id="lives" class="flex items-center gap-1.5" role="img" aria-label="2 spare lives"></div>
+                    <canvas id="fruits" class="block" role="img" aria-label="Bonus fruit"></canvas>
+                </div>
+                <p class="hidden text-center leading-relaxed text-arcade-dim md:block">ARROWS, WASD OR GAMEPAD · P PAUSE · M SOUND</p>
                 <div class="flex gap-2">
                     <button id="pause" type="button" class="arcade-button" aria-pressed="false">PAUSE</button>
                     <button id="mute" type="button" class="arcade-button" aria-pressed="true">SOUND ON</button>

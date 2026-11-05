@@ -47,6 +47,10 @@ const FRUIT_DOT_COUNTS = [70, 170];
 const FRUIT_SECONDS = 9.5;
 const EXTRA_LIFE_SCORE = 10000;
 const COLLISION_DISTANCE = 0.7;
+// Blinky turns into "Cruise Elroy" near the end of a level: faster, and he
+// keeps chasing even while the others scatter.
+const ELROY_DOTS = 20;
+const ELROY_BOOST = [1.05, 1.1];
 
 const GHOST_SETUP = [
     { name: 'blinky', x: HOUSE_X, y: DOOR_Y, corner: { x: 25, y: -3 }, inHouse: false },
@@ -90,6 +94,7 @@ export class Game {
         this.level = 1;
         this.lives = 3;
         this.extraLifeGiven = false;
+        this.startingHighScore = this.highScore;
         this.resetMaze();
         this.resetActors(false);
         this.setState('ready');
@@ -140,6 +145,14 @@ export class Game {
 
     get speedFactor() {
         return Math.min(1.3, 1 + (this.level - 1) * 0.05);
+    }
+
+    get isNewHighScore() {
+        return this.score > 0 && this.score > (this.startingHighScore ?? 0);
+    }
+
+    isElroy(ghost) {
+        return ghost.name === 'blinky' && this.dotsLeft <= ELROY_DOTS && !this.ghosts.some((other) => other.state === 'house');
     }
 
     get frightDuration() {
@@ -340,6 +353,10 @@ export class Game {
             return FRIGHT_SPEED;
         }
 
+        if (this.isElroy(ghost)) {
+            return GHOST_SPEED * this.speedFactor * ELROY_BOOST[this.dotsLeft <= ELROY_DOTS / 2 ? 1 : 0];
+        }
+
         return GHOST_SPEED * this.speedFactor;
     }
 
@@ -383,7 +400,7 @@ export class Game {
         if (ghost.state === 'eyes') {
             return { x: 13, y: DOOR_Y };
         }
-        if (this.mode === 'scatter') {
+        if (this.mode === 'scatter' && !this.isElroy(ghost)) {
             return ghost.corner;
         }
 

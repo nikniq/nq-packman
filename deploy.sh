@@ -84,7 +84,7 @@ esac
 if grep -qE '^APP_DEBUG=true' .env; then
     echo "⚠ APP_DEBUG=true in .env — stack traces will be shown to visitors."
 fi
-for f in public_html/index.php public_html/build/manifest.json; do
+for f in public_html/index.php public_html/build/manifest.json public_html/icon.svg public_html/manifest.webmanifest; do
     [ -f "$f" ] || { echo "✗ missing $f"; exit 1; }
 done
 echo "  assets      : present"

@@ -206,6 +206,35 @@ test('an extra life is awarded once at 10,000 points', () => {
     assert.equal(game.highScore, 20000);
 });
 
+test('blinky speeds up and ignores scatter once few dots remain', () => {
+    const { game } = newGame();
+    run(game, 2.1);
+    const [blinky, ...others] = game.ghosts;
+    others.forEach((ghost) => (ghost.state = 'active'));
+    const normalSpeed = game.ghostSpeed(blinky);
+
+    assert.equal(game.mode, 'scatter');
+    assert.deepEqual(game.ghostTarget(blinky), blinky.corner);
+
+    game.dotsLeft = 20;
+    assert.ok(game.ghostSpeed(blinky) > normalSpeed, 'faster at 20 dots');
+    const firstBoost = game.ghostSpeed(blinky);
+    game.dotsLeft = 10;
+    assert.ok(game.ghostSpeed(blinky) > firstBoost, 'faster again at 10 dots');
+    assert.deepEqual(game.ghostTarget(blinky), { x: Math.round(game.pac.x), y: Math.round(game.pac.y) });
+    assert.equal(game.ghostSpeed(others[0]), normalSpeed, 'other ghosts are unaffected');
+});
+
+test('a new high score is only flagged when the previous best is beaten', () => {
+    const game = new Game({ highScore: 500 });
+    game.start();
+    game.addScore(500);
+    assert.equal(game.isNewHighScore, false);
+    game.addScore(10);
+    assert.equal(game.isNewHighScore, true);
+    assert.equal(game.highScore, 510);
+});
+
 test('direction constants are distinct unit vectors', () => {
     assert.deepEqual([UP, LEFT, DOWN, RIGHT].map((dir) => Math.abs(dir.x) + Math.abs(dir.y)), [1, 1, 1, 1]);
 });

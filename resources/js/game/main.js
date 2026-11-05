@@ -1,9 +1,9 @@
 // Wires the engine to the page: input, the frame loop, the HUD and sound.
 
 import { Sound } from './audio.js';
-import { Game } from './engine.js';
+import { Game, fruitForLevel } from './engine.js';
 import { COLS, DOWN, LEFT, RIGHT, ROWS, UP } from './maze.js';
-import { Renderer } from './render.js';
+import { Renderer, drawFruit } from './render.js';
 
 const STEP = 1 / 120;
 const HIGH_SCORE_KEY = 'packman.highScore';
@@ -47,6 +47,7 @@ export function boot() {
         highScore: document.getElementById('high-score'),
         level: document.getElementById('level'),
         lives: document.getElementById('lives'),
+        fruits: document.getElementById('fruits'),
         pause: document.getElementById('pause'),
         mute: document.getElementById('mute'),
     };
@@ -184,6 +185,69 @@ export function boot() {
             setPaused(true);
         }
     });
+    window.addEventListener('blur', () => setPaused(true));
+
+    // Gamepad: d-pad or left stick steers, A starts, Start pauses.
+    const padHeld = { start: false, pause: false };
+    const pollGamepad = () => {
+        const pad = Array.from(navigator.getGamepads?.() ?? []).find(Boolean);
+        if (!pad) {
+            return;
+        }
+        const pressed = (index) => Boolean(pad.buttons[index]?.pressed);
+        const [stickX = 0, stickY = 0] = pad.axes;
+        if (pressed(12) || stickY < -0.5) {
+            game.steer(UP);
+        } else if (pressed(13) || stickY > 0.5) {
+            game.steer(DOWN);
+        } else if (pressed(14) || stickX < -0.5) {
+            game.steer(LEFT);
+        } else if (pressed(15) || stickX > 0.5) {
+            game.steer(RIGHT);
+        }
+        const start = pressed(0);
+        const pause = pressed(9);
+        if (start && !padHeld.start && !startIfWaiting() && paused) {
+            setPaused(false);
+        }
+        if (pause && !padHeld.pause && !startIfWaiting()) {
+            setPaused(!paused);
+        }
+        padHeld.start = start;
+        padHeld.pause = pause;
+    };
+
+    // The fruit shelf shows the bonus fruit of the most recent levels.
+    const FRUIT_SHELF = 4;
+    const FRUIT_SIZE = 20;
+    const drawFruitShelf = (level) => {
+        const ratio = window.devicePixelRatio || 1;
+        const first = Math.max(1, level - FRUIT_SHELF + 1);
+        const count = level - first + 1;
+        hud.fruits.width = count * FRUIT_SIZE * ratio;
+        hud.fruits.height = FRUIT_SIZE * ratio;
+        hud.fruits.style.width = `${count * FRUIT_SIZE}px`;
+        hud.fruits.style.height = `${FRUIT_SIZE}px`;
+        hud.fruits.setAttribute('aria-label', `Bonus fruit: ${fruitForLevel(level).name}`);
+        const ctx = hud.fruits.getContext('2d');
+        const scale = (FRUIT_SIZE * ratio) / 1.6;
+        for (let index = 0; index < count; index += 1) {
+            ctx.setTransform(scale, 0, 0, scale, (index + 0.5) * FRUIT_SIZE * ratio, (FRUIT_SIZE * ratio) / 2);
+            drawFruit(ctx, fruitForLevel(first + index).name);
+        }
+    };
+
+    const updateAmbience = () => {
+        if (paused || game.state !== 'playing') {
+            sound.setAmbience(null);
+        } else if (game.ghosts.some((ghost) => ghost.state === 'eyes' || ghost.state === 'entering')) {
+            sound.setAmbience('eyes');
+        } else if (game.frightTime > 0) {
+            sound.setAmbience('fright');
+        } else {
+            sound.setAmbience('siren', game.dotsEaten / (game.dotsEaten + game.dotsLeft));
+        }
+    };
 
     // ---- HUD -------------------------------------------------------------
 
@@ -197,7 +261,10 @@ export function boot() {
     const updateHud = () => {
         show('score', game.score, (value) => (hud.score.textContent = String(value)));
         show('highScore', game.highScore, (value) => (hud.highScore.textContent = String(value)));
-        show('level', game.level, (value) => (hud.level.textContent = String(value)));
+        show('level', game.level, (value) => {
+            hud.level.textContent = String(value);
+            drawFruitShelf(value);
+        });
         // The life in play is not shown as a spare.
         show('lives', Math.max(0, game.lives - 1), (value) => {
             hud.lives.replaceChildren(
@@ -230,7 +297,9 @@ export function boot() {
             }
             pending -= STEP;
         }
+        pollGamepad();
         updateHud();
+        updateAmbience();
         renderer.draw(game, paused);
         requestAnimationFrame(frame);
     };

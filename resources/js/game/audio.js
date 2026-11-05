@@ -7,6 +7,8 @@ export class Sound {
     constructor() {
         this.context = null;
         this.waka = false;
+        this.ambience = null;
+        this.ambienceKey = '';
         this.muted = false;
         try {
             this.muted = window.localStorage.getItem(STORAGE_KEY) === '1';
@@ -37,6 +39,44 @@ export class Sound {
         }
 
         return this.muted;
+    }
+
+    // The background loop: a wailing siren that climbs as the maze empties,
+    // a low warble while ghosts are frightened, a fast chirp while eyes are
+    // heading home. Pass null to silence it.
+    setAmbience(kind, intensity = 0) {
+        const key = this.muted || kind === null ? '' : `${kind}:${Math.round(intensity * 8)}`;
+        if (key === this.ambienceKey || this.context === null) {
+            return;
+        }
+        this.ambienceKey = key;
+
+        if (this.ambience === null) {
+            const voice = this.context.createOscillator();
+            const wobble = this.context.createOscillator();
+            const depth = this.context.createGain();
+            const volume = this.context.createGain();
+            voice.type = 'triangle';
+            volume.gain.value = 0;
+            wobble.connect(depth).connect(voice.frequency);
+            voice.connect(volume).connect(this.context.destination);
+            voice.start();
+            wobble.start();
+            this.ambience = { voice, wobble, depth, volume };
+        }
+
+        const settings = {
+            '': { pitch: 300, rate: 2, depth: 0, volume: 0 },
+            siren: { pitch: 360 + intensity * 260, rate: 2.2 + intensity * 2, depth: 90, volume: 0.022 },
+            fright: { pitch: 170, rate: 9, depth: 55, volume: 0.035 },
+            eyes: { pitch: 950, rate: 13, depth: 320, volume: 0.02 },
+        }[key === '' ? '' : kind];
+        const now = this.context.currentTime;
+        const { voice, wobble, depth, volume } = this.ambience;
+        voice.frequency.setTargetAtTime(settings.pitch, now, 0.05);
+        wobble.frequency.setTargetAtTime(settings.rate, now, 0.05);
+        depth.gain.setTargetAtTime(settings.depth, now, 0.05);
+        volume.gain.setTargetAtTime(settings.volume, now, 0.04);
     }
 
     // One note that glides from one pitch to another.

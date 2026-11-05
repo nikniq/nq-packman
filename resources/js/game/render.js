@@ -10,16 +10,118 @@ const DOT_COLOR = '#ffb8ae';
 const PAC_COLOR = '#ffe600';
 const FRIGHT_COLOR = '#2233dd';
 const GHOST_COLORS = { blinky: '#ff2b1c', pinky: '#ffb1f5', inky: '#19e6f0', clyde: '#ffb547' };
-const FRUIT_COLORS = {
-    cherry: '#ff2b1c',
-    strawberry: '#ff4f6d',
-    orange: '#ffa726',
-    apple: '#e53935',
-    melon: '#7bd66b',
-    galaxian: '#ffd54f',
-    bell: '#ffe600',
-    key: '#9be7ff',
-};
+const LEAF_COLOR = '#3ddc68';
+const STEM_COLOR = '#c98a3c';
+
+function disc(ctx, x, y, radius, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function stroke(ctx, color, width, points) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    points.forEach(([x, y], index) => (index === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    ctx.stroke();
+}
+
+// Draws a bonus fruit centred on the origin, about 1.5 tiles across. Shared
+// by the maze and the fruit shelf in the HUD.
+export function drawFruit(ctx, name) {
+    switch (name) {
+        case 'cherry':
+            stroke(ctx, STEM_COLOR, 0.1, [[-0.3, 0.2], [0.05, -0.4], [0.45, -0.62]]);
+            stroke(ctx, STEM_COLOR, 0.1, [[0.32, 0.3], [0.3, -0.25], [0.45, -0.62]]);
+            disc(ctx, -0.32, 0.28, 0.34, '#ff2b1c');
+            disc(ctx, 0.32, 0.36, 0.34, '#ff2b1c');
+            disc(ctx, -0.42, 0.18, 0.08, '#ffd9c9');
+            disc(ctx, 0.22, 0.26, 0.08, '#ffd9c9');
+            break;
+        case 'strawberry':
+            ctx.fillStyle = '#ff2b4a';
+            ctx.beginPath();
+            ctx.moveTo(-0.58, -0.3);
+            ctx.quadraticCurveTo(-0.62, 0.35, 0, 0.72);
+            ctx.quadraticCurveTo(0.62, 0.35, 0.58, -0.3);
+            ctx.quadraticCurveTo(0, -0.62, -0.58, -0.3);
+            ctx.fill();
+            for (const [x, y] of [[-0.28, -0.05], [0.05, 0.02], [0.32, -0.1], [-0.1, 0.32], [0.2, 0.3]]) {
+                disc(ctx, x, y, 0.055, '#fff3c4');
+            }
+            stroke(ctx, LEAF_COLOR, 0.16, [[-0.34, -0.42], [0, -0.52], [0.34, -0.42]]);
+            stroke(ctx, LEAF_COLOR, 0.12, [[0, -0.5], [0, -0.7]]);
+            break;
+        case 'orange':
+            disc(ctx, 0, 0.1, 0.58, '#ffa726');
+            disc(ctx, -0.2, -0.08, 0.1, '#ffd08a');
+            stroke(ctx, LEAF_COLOR, 0.16, [[0, -0.46], [0.3, -0.64]]);
+            break;
+        case 'apple':
+            disc(ctx, -0.2, 0.1, 0.44, '#e53935');
+            disc(ctx, 0.2, 0.1, 0.44, '#e53935');
+            disc(ctx, -0.3, -0.04, 0.09, '#ffb3ae');
+            stroke(ctx, STEM_COLOR, 0.1, [[0, -0.28], [0.08, -0.66]]);
+            stroke(ctx, LEAF_COLOR, 0.14, [[0.1, -0.5], [0.36, -0.58]]);
+            break;
+        case 'melon':
+            disc(ctx, 0, 0.12, 0.58, '#5fcf5a');
+            stroke(ctx, '#2f8f3a', 0.07, [[-0.3, -0.34], [-0.38, 0.12], [-0.28, 0.58]]);
+            stroke(ctx, '#2f8f3a', 0.07, [[0, -0.44], [0, 0.68]]);
+            stroke(ctx, '#2f8f3a', 0.07, [[0.3, -0.34], [0.38, 0.12], [0.28, 0.58]]);
+            stroke(ctx, STEM_COLOR, 0.1, [[0, -0.46], [0.12, -0.7]]);
+            break;
+        case 'galaxian':
+            ctx.fillStyle = '#ffd54f';
+            ctx.beginPath();
+            ctx.moveTo(0, -0.68);
+            ctx.lineTo(0.28, -0.05);
+            ctx.lineTo(0.7, 0.05);
+            ctx.lineTo(0.3, 0.3);
+            ctx.lineTo(0.22, 0.68);
+            ctx.lineTo(0, 0.4);
+            ctx.lineTo(-0.22, 0.68);
+            ctx.lineTo(-0.3, 0.3);
+            ctx.lineTo(-0.7, 0.05);
+            ctx.lineTo(-0.28, -0.05);
+            ctx.closePath();
+            ctx.fill();
+            disc(ctx, 0, -0.1, 0.16, '#ff2b1c');
+            stroke(ctx, '#2a8cff', 0.1, [[-0.5, 0.1], [-0.3, 0.2]]);
+            stroke(ctx, '#2a8cff', 0.1, [[0.5, 0.1], [0.3, 0.2]]);
+            break;
+        case 'bell':
+            ctx.fillStyle = '#ffe600';
+            ctx.beginPath();
+            ctx.moveTo(-0.62, 0.42);
+            ctx.quadraticCurveTo(-0.4, 0.2, -0.4, -0.2);
+            ctx.quadraticCurveTo(-0.4, -0.68, 0, -0.68);
+            ctx.quadraticCurveTo(0.4, -0.68, 0.4, -0.2);
+            ctx.quadraticCurveTo(0.4, 0.2, 0.62, 0.42);
+            ctx.closePath();
+            ctx.fill();
+            disc(ctx, 0, 0.52, 0.14, '#f4f4ff');
+            stroke(ctx, '#fff8b0', 0.08, [[-0.2, -0.4], [-0.24, 0.1]]);
+            break;
+        case 'key':
+            ctx.fillStyle = '#9be7ff';
+            ctx.beginPath();
+            ctx.arc(0, -0.38, 0.32, 0, Math.PI * 2);
+            ctx.arc(0, -0.42, 0.11, 0, Math.PI * 2, true);
+            ctx.fill('evenodd');
+            stroke(ctx, '#f4f4ff', 0.14, [[0, -0.06], [0, 0.68]]);
+            stroke(ctx, '#f4f4ff', 0.12, [[0, 0.4], [0.24, 0.4]]);
+            stroke(ctx, '#f4f4ff', 0.12, [[0, 0.64], [0.24, 0.64]]);
+            break;
+        default:
+            disc(ctx, 0, 0, 0.5, '#ff2b1c');
+            break;
+    }
+}
 
 export class Renderer {
     constructor(canvas) {
@@ -229,30 +331,7 @@ export class Renderer {
         const { ctx } = this;
         ctx.save();
         ctx.translate(x, y);
-        ctx.fillStyle = FRUIT_COLORS[name] || '#ff2b1c';
-        ctx.beginPath();
-        if (name === 'cherry') {
-            ctx.arc(-0.3, 0.25, 0.32, 0, Math.PI * 2);
-            ctx.arc(0.32, 0.32, 0.32, 0, Math.PI * 2);
-        } else if (name === 'key' || name === 'bell') {
-            ctx.moveTo(0, -0.6);
-            ctx.lineTo(0.5, 0.45);
-            ctx.lineTo(-0.5, 0.45);
-            ctx.closePath();
-        } else {
-            ctx.arc(0, 0.08, 0.52, 0, Math.PI * 2);
-        }
-        ctx.fill();
-        ctx.strokeStyle = '#3ddc68';
-        ctx.lineWidth = 0.12;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(name === 'cherry' ? -0.25 : 0, name === 'cherry' ? -0.05 : -0.42);
-        ctx.quadraticCurveTo(0.1, -0.6, 0.38, -0.66);
-        if (name === 'cherry') {
-            ctx.lineTo(0.32, 0.02);
-        }
-        ctx.stroke();
+        drawFruit(ctx, name);
         ctx.restore();
     }
 
@@ -273,6 +352,9 @@ export class Renderer {
                 break;
             case 'gameOver':
                 this.text('GAME OVER', 13.5, 17, 0.9, '#ff2b1c');
+                if (game.isNewHighScore && Math.floor(game.stateTime * 3) % 2 === 0) {
+                    this.text('NEW HIGH SCORE', 13.5, 11, 0.68, PAC_COLOR);
+                }
                 if (game.stateTime > 1) {
                     this.text('ENTER OR TAP', 13.5, 23, 0.72, '#f4f4ff', '#000');
                 }

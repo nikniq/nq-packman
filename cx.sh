@@ -219,7 +219,7 @@ case "$SELECTION" in
   banner "HEALTH: $APP_URL"
   # Checked from here rather than on the server so it exercises the real
   # path in: DNS, TLS and the web server, not just PHP.
-  for p in "" build/manifest.json favicon.ico robots.txt up; do
+  for p in "" build/manifest.json icon.svg manifest.webmanifest robots.txt up; do
     printf '%-20s ' "/$p"
     curl -sS -o /dev/null -w '%{http_code}  %{time_total}s\n' --max-time 25 "$APP_URL/$p" || echo "✗ no response"
   done

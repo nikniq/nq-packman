@@ -10,8 +10,8 @@ export default defineConfig({
             publicDirectory: 'public_html',
             refresh: true,
             fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
+                bunny('Press Start 2P', {
+                    weights: [400],
                 }),
             ],
         }),

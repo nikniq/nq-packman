@@ -15,6 +15,17 @@ npm install && npm run build
 php artisan serve
 ```
 
+## Playing
+
+Arrow keys or WASD to move, or swipe on a touch screen. Enter or tap starts, P pauses, M toggles sound. The high score is kept in the browser.
+
+## Tests
+
+```bash
+php artisan test   # page and route
+npm test           # game engine (node --test, no browser needed)
+```
+
 ## Operations
 
 - `cx.sh` runs locally and drives the server over SSH (deploy, caches, logs, health, maintenance mode). Copy `vars.sh.example` to `vars.sh` and fill in the host details first. Run `./cx.sh` for the menu.

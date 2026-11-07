@@ -9,33 +9,39 @@
 # ⚠ Runs on your LOCAL machine only — never copy this to the server.
 #   Its counterpart on the server is deploy.sh (pull + caches + verify).
 #
-# Requires a vars.sh next to it defining REMOTE, PROJECT, APP_SSH, etc.
-# See vars.sh.example. vars.sh is gitignored because it holds host and
-# account details.
+# No vars.sh: the server settings live in the block below. They are not
+# secrets (SSH authenticates with your key), and every one can be
+# overridden for a session with an environment variable, e.g.
 #
-# Version 1.0 (nq-packman)
-# - based on the nq-space-invaders cx.sh. Deploy, what's-live, caches,
-#   composer, assets, health, logs, artisan, config, disk, maintenance
-#   mode, commit-and-push, and a plain SSH connect.
+#   REMOTE_HOST=staging.example.com ./cx.sh 30
+#
+# Version 1.1 (nq-packman)
+# - settings built in; vars.sh no longer needed.
+# - 36 diagnoses a 403/500 on the server (document root, permissions,
+#   live request), 20 runs the same checks after each deploy.
 # - the Vite bundle (public_html/build) is committed because the server
 #   cannot run the bundler; 20 rebuilds it locally before deploying.
 #================================================================
 clear
 
-if [ ! -f ./vars.sh ]; then
-  echo "vars.sh not found next to cx.sh — copy vars.sh.example to vars.sh and fill it in."
-  exit 1
-fi
-source ./vars.sh
-
-REMOTE_APP="${REMOTE_APP:-www/$PROJECT}"
-APP_URL="${APP_URL:-https://$PROJECT}"
-LOG_OUTPUT="${LOG_OUTPUT:-./log/remote.out}"
+#---------------------------------------------------------------
+# Settings (override with environment variables of the same name)
+#---------------------------------------------------------------
+PROJECT="${PROJECT:-nq-packman}"
+DOMAIN="${DOMAIN:-packman.nikniq.com}"          # the site's hostname
+REMOTE_USER="${REMOTE_USER:-u4-bg8uegu57tjw}"   # SiteGround SSH user
+REMOTE_HOST="${REMOTE_HOST:-ssh.nikniq.com}"
+REMOTE_PORT="${REMOTE_PORT:-18765}"             # SiteGround's SSH port
+REMOTE="$REMOTE_USER@$REMOTE_HOST"
+REMOTE_APP="${REMOTE_APP:-www/$DOMAIN}"         # app root, relative to ~
+APP_URL="${APP_URL:-https://$DOMAIN}"
+APP_SSH="${APP_SSH:-ssh -p $REMOTE_PORT}"
+APP_SCP="${APP_SCP:-scp -P $REMOTE_PORT}"
 
 # This script drives the server from outside. Run on the server it would
 # try to ssh to itself.
-if [ "$(hostname -s 2>/dev/null)" = "${REMOTE_HOST%%.*}" ]; then
-  echo "⚠ This looks like $REMOTE_HOST — cx.sh is the LOCAL script. Use deploy.sh here."
+if [ "$(whoami)" = "$REMOTE_USER" ]; then
+  echo "⚠ You are logged in as $REMOTE_USER — cx.sh is the LOCAL script. Use ./deploy.sh here."
   exit 1
 fi
 
@@ -80,7 +86,7 @@ confirm() {
 }
 
 echo =============================================================
-echo "Hi $USER@$HOSTNAME — acting on $PROJECT ($REMOTE)"
+echo "Hi $(whoami)@$(hostname -s) — acting on $PROJECT ($REMOTE:~/$REMOTE_APP)"
 echo What do you want to do?
 echo -------------------------------------------------------------
 echo "ROUTINE — day to day"
@@ -97,6 +103,7 @@ echo "32 : LOGS: last errors"
 echo "33 : ARTISAN: run a command (e.g. 'about')"
 echo "34 : CONFIG: key settings on the server (secrets hidden)"
 echo "35 : DISK: what is using the account quota"
+echo "36 : WHY 403/500: document root, permissions and a live request from the server"
 echo ----------------------------------------------
 echo MAINTENANCE
 echo "72 : MAINTENANCE MODE: on  [site goes down]"
@@ -262,6 +269,28 @@ case "$SELECTION" in
   ;;
 
 
+  "36" )
+  banner "WHY 403/500 on $APP_URL"
+  # A 403 on the home page is a hosting problem, not a Laravel one: the
+  # domain's document root is not ~/$REMOTE_APP/public_html, or the files
+  # are too permissive for the host's PHP handler. deploy.sh --check prints
+  # the expected document root, fixes nothing, and requests the site from
+  # the server so DNS/CDN cannot confuse the picture.
+  echo "--- from here ---"
+  for p in "" up; do
+    printf '%-20s ' "/$p"
+    curl -sS -o /dev/null -w '%{http_code}  server=%{content_type}\n' --max-time 25 "$APP_URL/$p" || echo "✗ no response"
+  done
+  echo
+  echo "--- on the server ---"
+  remote "echo \"app root : \$(pwd)\"; ls -ld . public_html public_html/index.php public_html/.htaccess 2>&1; echo; ./deploy.sh --check" \
+    || echo "✗ ./deploy.sh --check failed — see the messages above (if the app root is missing, run 01)."
+  echo
+  echo "If GET / is 403: Site Tools → Domain → Manage Domain → set the document root"
+  echo "to ~/$REMOTE_APP/public_html, then run 36 again."
+  ;;
+
+
   #-------------------------------------------------------------
   # MAINTENANCE
   #-------------------------------------------------------------
@@ -331,13 +360,15 @@ case "$SELECTION" in
   banner "FIRST-TIME SETUP on $REMOTE"
   REPO_URL=$(git remote get-url origin)
   echo "Clones $REPO_URL into ~/$REMOTE_APP, installs dependencies, creates .env."
-  echo "Afterwards point the web server's document root at ~/$REMOTE_APP/public_html"
-  echo "and set APP_URL in .env."
+  echo "Afterwards set the domain's document root to ~/$REMOTE_APP/public_html"
+  echo "(Site Tools → Domain → Manage Domain) and set APP_URL=$APP_URL in .env."
   confirm "Continue?"
   $APP_SSH -t "$REMOTE" "mkdir -p ~/$(dirname "$REMOTE_APP") && cd ~/$(dirname "$REMOTE_APP") \
     && git clone $REPO_URL $(basename "$REMOTE_APP") && cd $(basename "$REMOTE_APP") \
     && composer install --no-dev --optimize-autoloader --no-interaction \
-    && cp -n .env.example .env && php artisan key:generate && ./deploy.sh"
+    && cp -n .env.example .env \
+    && sed -i -e 's#^APP_URL=.*#APP_URL=$APP_URL#' -e 's#^APP_ENV=.*#APP_ENV=production#' -e 's#^APP_DEBUG=.*#APP_DEBUG=false#' .env \
+    && php artisan key:generate && ./deploy.sh"
   log_history "First-time setup of $PROJECT on $REMOTE"
   ;;
 

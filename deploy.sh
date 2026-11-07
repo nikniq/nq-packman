@@ -25,54 +25,61 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "→ git pull"
-LOCK_BEFORE=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
-git pull --ff-only
-LOCK_AFTER=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
+# Everything runs inside a function so bash parses the whole file before
+# executing any of it. Without this, the git pull below can replace this
+# very script while it is running and bash carries on reading stale bytes.
+main() {
+    echo "→ git pull"
+    LOCK_BEFORE=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
+    git pull --ff-only
+    LOCK_AFTER=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
 
-if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ] || [ ! -d vendor ]; then
-    if command -v composer >/dev/null 2>&1; then
-        echo "→ composer install (lockfile changed or vendor/ missing)"
-        composer install --no-dev --optimize-autoloader --no-interaction
-    else
-        # Not fatal: the pull has already landed, and stopping here would
-        # leave the tree un-migrated as well. Say so loudly instead.
-        echo "⚠ composer.lock changed but composer is not on PATH."
-        echo "  Install dependencies manually before trusting this deploy."
+    if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ] || [ ! -d vendor ]; then
+        if command -v composer >/dev/null 2>&1; then
+            echo "→ composer install (lockfile changed or vendor/ missing)"
+            composer install --no-dev --optimize-autoloader --no-interaction
+        else
+            # Not fatal: the pull has already landed, and stopping here would
+            # leave the tree un-migrated as well. Say so loudly instead.
+            echo "⚠ composer.lock changed but composer is not on PATH."
+            echo "  Install dependencies manually before trusting this deploy."
+        fi
     fi
-fi
 
-if [ ! -f .env ]; then
-    echo "✗ No .env on the server. Copy .env.example to .env, set APP_URL,"
-    echo "  APP_ENV=production, APP_DEBUG=false and run: php artisan key:generate"
-    exit 1
-fi
+    if [ ! -f .env ]; then
+        echo "✗ No .env on the server. Copy .env.example to .env, set APP_URL,"
+        echo "  APP_ENV=production, APP_DEBUG=false and run: php artisan key:generate"
+        exit 1
+    fi
 
-echo "→ storage permissions"
-mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache
-chmod -R ug+rwX storage bootstrap/cache
-[ -L public_html/storage ] || php artisan storage:link >/dev/null 2>&1 || true
+    echo "→ storage permissions"
+    mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache
+    chmod -R ug+rwX storage bootstrap/cache
+    [ -L public_html/storage ] || php artisan storage:link >/dev/null 2>&1 || true
 
-echo "→ migrate"
-php artisan migrate --force
+    echo "→ migrate"
+    php artisan migrate --force
 
-echo "→ cache config/routes/views"
-php artisan optimize
+    echo "→ cache config/routes/views"
+    php artisan optimize
 
-echo "→ verify"
-PUBLIC_PATH=$(php artisan tinker --execute='echo public_path();' 2>/dev/null | tr -d '\r' || true)
-case "$PUBLIC_PATH" in
-    */public_html) echo "  public path : $PUBLIC_PATH" ;;
-    "")            echo "  public path : (tinker unavailable on this PHP; skipped)" ;;
-    *)             echo "✗ public path is $PUBLIC_PATH, expected …/public_html"; exit 1 ;;
-esac
-if grep -qE '^APP_DEBUG=true' .env; then
-    echo "⚠ APP_DEBUG=true in .env — stack traces will be shown to visitors."
-fi
-for f in public_html/index.php public_html/build/manifest.json public_html/icon.svg public_html/manifest.webmanifest; do
-    [ -f "$f" ] || { echo "✗ missing $f (the Vite build is committed; run ./cx.sh 20 locally)"; exit 1; }
-done
-echo "  assets      : present"
-php artisan route:list --path=/ --columns=method,uri,name
+    echo "→ verify"
+    PUBLIC_PATH=$(php artisan tinker --execute='echo public_path();' 2>/dev/null | tr -d '\r' || true)
+    case "$PUBLIC_PATH" in
+        */public_html) echo "  public path : $PUBLIC_PATH" ;;
+        "")            echo "  public path : (tinker unavailable on this PHP; skipped)" ;;
+        *)             echo "✗ public path is $PUBLIC_PATH, expected …/public_html"; exit 1 ;;
+    esac
+    if grep -qE '^APP_DEBUG=true' .env; then
+        echo "⚠ APP_DEBUG=true in .env — stack traces will be shown to visitors."
+    fi
+    for f in public_html/index.php public_html/build/manifest.json public_html/icon.svg public_html/manifest.webmanifest; do
+        [ -f "$f" ] || { echo "✗ missing $f (the Vite build is committed; run ./cx.sh 20 locally)"; exit 1; }
+    done
+    echo "  assets      : present"
+    php artisan route:list --path=/ --columns=method,uri,name
 
-echo "✓ deployed $(git log --oneline -1)"
+    echo "✓ deployed $(git log --oneline -1)"
+}
+
+main "$@"

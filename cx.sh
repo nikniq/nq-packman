@@ -17,8 +17,8 @@
 # - based on the nq-space-invaders cx.sh. Deploy, what's-live, caches,
 #   composer, assets, health, logs, artisan, config, disk, maintenance
 #   mode, commit-and-push, and a plain SSH connect.
-# - 27 ASSETS builds the Vite bundle locally and uploads public_html/build,
-#   for hosts without node (the build output is gitignored).
+# - the Vite bundle (public_html/build) is committed because the server
+#   cannot run the bundler; 20 rebuilds it locally before deploying.
 #================================================================
 clear
 
@@ -31,7 +31,6 @@ source ./vars.sh
 REMOTE_APP="${REMOTE_APP:-www/$PROJECT}"
 APP_URL="${APP_URL:-https://$PROJECT}"
 LOG_OUTPUT="${LOG_OUTPUT:-./log/remote.out}"
-APP_RSYNC="${APP_RSYNC:-rsync -az -e '$APP_SSH'}"
 
 # This script drives the server from outside. Run on the server it would
 # try to ssh to itself.
@@ -90,7 +89,6 @@ echo "22 : WHAT'S LIVE: compare the server's HEAD with local"
 echo "24 : CACHES: refresh config/routes/views"
 echo "25 : CACHES: clear everything (when a cached value looks stale)"
 echo "26 : COMPOSER: install production dependencies"
-echo "27 : ASSETS: build Vite bundle locally and upload public_html/build"
 echo ----------------------------------------------
 echo DIAGNOSE
 echo "30 : HEALTH: $APP_URL — page, assets and /up"
@@ -133,6 +131,14 @@ case "$SELECTION" in
 
   "20" )
   banner "DEPLOY: $PROJECT"
+  # The server only pulls, so the Vite bundle must be built here and
+  # committed. Rebuild first so a stale bundle cannot ship.
+  echo "→ npm run build"
+  npm run build --silent || { echo "✗ build failed — not deploying"; exit 1; }
+  if [ -n "$(git status --porcelain public_html/build)" ]; then
+    echo "⚠ public_html/build changed — commit it (option 90) before deploying."
+    echo
+  fi
   # The server deploys by pulling from git, so anything not pushed is not
   # deployed. Without this check the deploy "succeeds" on the previous
   # commit and the change appears to have silently done nothing.
@@ -196,18 +202,6 @@ case "$SELECTION" in
   banner "COMPOSER: install production dependencies"
   remote_tty "composer install --no-dev --optimize-autoloader --no-interaction"
   log_history "Installed composer dependencies on $PROJECT"
-  ;;
-
-
-  "27" )
-  banner "ASSETS: build locally, upload public_html/build to $PROJECT"
-  # public_html/build is gitignored, so on a host without node it has to be
-  # shipped from here. --delete removes stale hashed bundles so the server's
-  # manifest and files always come from the same build.
-  npm run build || { echo "✗ build failed"; exit 1; }
-  eval "$APP_RSYNC --delete ./public_html/build/ \"$REMOTE:~/$REMOTE_APP/public_html/build/\""
-  remote "ls public_html/build/manifest.json && php artisan view:clear"
-  log_history "Uploaded assets to $PROJECT"
   ;;
 
 

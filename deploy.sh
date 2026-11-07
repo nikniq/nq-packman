@@ -6,7 +6,7 @@
 #   ./deploy.sh
 #
 # Steps: git pull -> composer install (only when composer.lock moved)
-#        -> front-end assets -> migrate -> rebuild caches -> verify.
+#        -> migrate -> rebuild caches -> verify.
 #
 # The server deploys by pulling from git, so only pushed commits reach it.
 # The whole sequence lives here so the steps cannot drift apart: a pull
@@ -17,19 +17,18 @@
 # usePublicPath), so point the vhost or hosting panel there, never at the
 # app root.
 #
-# Assets: the game is bundled by Vite into public_html/build/, which is
-# gitignored. If node is on the server the build runs here; otherwise build
-# locally and upload with cx.sh option 27 BEFORE deploying.
+# Assets: the Vite bundle in public_html/build/ is COMMITTED, so this script
+# never runs npm. Shared hosting cannot run the bundler (Rolldown needs a
+# worker thread pool and the account's process limit refuses it), so build
+# locally and commit: cx.sh option 20 does that before each deploy.
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "→ git pull"
 LOCK_BEFORE=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
-PKG_BEFORE=$(git rev-parse HEAD:package-lock.json 2>/dev/null || echo none)
 git pull --ff-only
 LOCK_AFTER=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
-PKG_AFTER=$(git rev-parse HEAD:package-lock.json 2>/dev/null || echo none)
 
 if [ "$LOCK_BEFORE" != "$LOCK_AFTER" ] || [ ! -d vendor ]; then
     if command -v composer >/dev/null 2>&1; then
@@ -46,20 +45,6 @@ fi
 if [ ! -f .env ]; then
     echo "✗ No .env on the server. Copy .env.example to .env, set APP_URL,"
     echo "  APP_ENV=production, APP_DEBUG=false and run: php artisan key:generate"
-    exit 1
-fi
-
-echo "→ front-end assets"
-if command -v npm >/dev/null 2>&1; then
-    if [ "$PKG_BEFORE" != "$PKG_AFTER" ] || [ ! -d node_modules ]; then
-        npm ci --no-audit --no-fund
-    fi
-    npm run build
-elif [ -f public_html/build/manifest.json ]; then
-    echo "  npm not on PATH — using the uploaded public_html/build/ (cx.sh 27)"
-else
-    echo "✗ No npm here and no public_html/build/manifest.json."
-    echo "  Run ./cx.sh 27 locally to build and upload the assets, then redeploy."
     exit 1
 fi
 
@@ -85,7 +70,7 @@ if grep -qE '^APP_DEBUG=true' .env; then
     echo "⚠ APP_DEBUG=true in .env — stack traces will be shown to visitors."
 fi
 for f in public_html/index.php public_html/build/manifest.json public_html/icon.svg public_html/manifest.webmanifest; do
-    [ -f "$f" ] || { echo "✗ missing $f"; exit 1; }
+    [ -f "$f" ] || { echo "✗ missing $f (the Vite build is committed; run ./cx.sh 20 locally)"; exit 1; }
 done
 echo "  assets      : present"
 php artisan route:list --path=/ --columns=method,uri,name

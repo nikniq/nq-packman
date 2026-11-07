@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "style": {
+    "file": "assets/fonts-QIivX0Wj.css",
+    "familyStyles": {
+      "press-start-2p": "@font-face {\n  font-family: \"Press Start 2P\";\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n  src: url(\"/build/assets/press-start-2p-400-normal-_wFEWmAB.woff2\") format(\"woff2\");\n  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;\n}\n\n@font-face {\n  font-family: \"Press Start 2P\";\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n  src: url(\"/build/assets/press-start-2p-400-normal-KLytu4cr.woff\") format(\"woff\");\n  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;\n}\n\n.font-press-start-2p {\n  font-family: var(--font-press-start-2p);\n}"
+    },
+    "variables": {
+      "press-start-2p": "--font-press-start-2p: \"Press Start 2P\";"
+    }
+  },
+  "preloads": [
+    {
+      "alias": "press-start-2p",
+      "family": "Press Start 2P",
+      "weight": 400,
+      "style": "normal",
+      "file": "assets/press-start-2p-400-normal-_wFEWmAB.woff2",
+      "as": "font",
+      "type": "font/woff2",
+      "crossorigin": "anonymous"
+    }
+  ],
+  "families": {
+    "press-start-2p": {
+      "family": "Press Start 2P",
+      "variable": "--font-press-start-2p",
+      "variants": {
+        "400:normal": {
+          "files": [
+            {
+              "file": "assets/press-start-2p-400-normal-_wFEWmAB.woff2",
+              "format": "woff2",
+              "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+            },
+            {
+              "file": "assets/press-start-2p-400-normal-KLytu4cr.woff",
+              "format": "woff",
+              "unicodeRange": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "_fonts-QIivX0Wj.css": {
+    "file": "assets/fonts-QIivX0Wj.css",
+    "src": "_fonts-QIivX0Wj.css"
+  },
+  "_press-start-2p-400-normal-KLytu4cr.woff": {
+    "file": "assets/press-start-2p-400-normal-KLytu4cr.woff",
+    "src": "_press-start-2p-400-normal-KLytu4cr.woff"
+  },
+  "_press-start-2p-400-normal-_wFEWmAB.woff2": {
+    "file": "assets/press-start-2p-400-normal-_wFEWmAB.woff2",
+    "src": "_press-start-2p-400-normal-_wFEWmAB.woff2"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-C9N198zq.css",
+    "name": "app",
+    "names": [
+      "app.css"
+    ],
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-CbOiMwu8.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true
+  }
+}

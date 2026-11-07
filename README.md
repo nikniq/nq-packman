@@ -29,5 +29,5 @@ npm test           # game engine (node --test, no browser needed)
 ## Operations
 
 - `cx.sh` runs locally and drives the server over SSH (deploy, caches, logs, health, maintenance mode). Copy `vars.sh.example` to `vars.sh` and fill in the host details first. Run `./cx.sh` for the menu.
-- `deploy.sh` runs on the server: `git pull`, composer (when the lockfile changed), Vite build, migrate, cache rebuild, verify.
-- The Vite output in `public_html/build/` is not committed. If the server has no Node, run `./cx.sh 27` to build locally and upload it before deploying.
+- `deploy.sh` runs on the server: `git pull`, composer (when the lockfile changed), migrate, cache rebuild, verify. It never runs npm.
+- The Vite output in `public_html/build/` is committed, because shared hosting cannot run the bundler. `./cx.sh 20` rebuilds it before deploying; commit the result with the rest of your change.

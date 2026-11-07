@@ -26,7 +26,6 @@ APP_URL="https://your-domain.example.com"
 # Kept as variables so you can add flags once (e.g. -i KEY).
 APP_SSH="ssh -p $REMOTE_PORT"
 APP_SCP="scp -P $REMOTE_PORT"
-APP_RSYNC="rsync -az -e 'ssh -p $REMOTE_PORT'"
 
 # --- Local paths ---------------------------------------------------------
 LOG_OUTPUT="./log/remote.out"

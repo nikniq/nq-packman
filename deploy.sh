@@ -52,6 +52,11 @@ main() {
         exit 1
     fi
 
+    # Drop any cached config first so edits to .env are honoured by the
+    # steps below; optimize rebuilds the cache at the end.
+    echo "→ clear config cache"
+    php artisan config:clear --quiet
+
     echo "→ storage permissions"
     mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache
     chmod -R ug+rwX storage bootstrap/cache

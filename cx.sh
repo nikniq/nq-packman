@@ -1,13 +1,14 @@
 #!/bin/bash
 #================================================================
-# LOCAL command-line assistant — cx.sh
+# Operations menu — cx.sh
 #
 #   ./cx.sh            # interactive menu
 #   ./cx.sh 20         # run an option directly
 #   ./cx.sh 33 "about" # …with a second parameter
 #
-# ⚠ Runs on your LOCAL machine only — never copy this to the server.
-#   Its counterpart on the server is deploy.sh (pull + caches + verify).
+# Runs in the TARGET environment (the server, from the app root), where
+# every option executes directly. It also works from a workstation: there
+# it detects it is not the server and sends the same commands over SSH.
 #
 # No vars.sh: the server settings live in the block below. They are not
 # secrets (SSH authenticates with your key), and every one can be
@@ -15,10 +16,10 @@
 #
 #   REMOTE_HOST=staging.example.com ./cx.sh 30
 #
-# Version 1.1 (nq-packman)
+# Version 1.2 (nq-packman)
+# - runs on the server itself (no SSH hop) or from a workstation.
 # - settings built in; vars.sh no longer needed.
-# - 36 diagnoses a 403/500 on the server (document root, permissions,
-#   live request), 20 runs the same checks after each deploy.
+# - 36 diagnoses a 403/500 (document root, permissions, live request).
 # - the Vite bundle (public_html/build) is committed because the server
 #   cannot run the bundler; 20 rebuilds it locally before deploying.
 #================================================================
@@ -38,11 +39,12 @@ APP_URL="${APP_URL:-https://$DOMAIN}"
 APP_SSH="${APP_SSH:-ssh -p $REMOTE_PORT}"
 APP_SCP="${APP_SCP:-scp -P $REMOTE_PORT}"
 
-# This script drives the server from outside. Run on the server it would
-# try to ssh to itself.
-if [ "$(whoami)" = "$REMOTE_USER" ]; then
-  echo "⚠ You are logged in as $REMOTE_USER — cx.sh is the LOCAL script. Use ./deploy.sh here."
-  exit 1
+# On the server (same account, or sitting in an app root) run directly;
+# anywhere else, ssh to the server for the remote steps.
+if [ "$(whoami)" = "$REMOTE_USER" ] || [ -f artisan -a -f deploy.sh -a ! -d node_modules -a -n "${SSH_CONNECTION:-}" ]; then
+  ON_SERVER=1; WHERE="here"
+else
+  ON_SERVER=0; WHERE="$REMOTE:~/$REMOTE_APP"
 fi
 
 #---------------------------------------------------------------
@@ -56,14 +58,15 @@ log_history() {
   cat ./log/history.log >> tmpfile && mv tmpfile ./log/history.log
 }
 
-# Run a command on the server, in the app directory.
+# Run a command in the app directory on the server. On the server itself
+# that is a plain shell; elsewhere it goes over SSH.
 remote() {
-  $APP_SSH "$REMOTE" "cd ~/$REMOTE_APP && $*"
+  if [ "$ON_SERVER" = 1 ]; then bash -c "$*"; else $APP_SSH "$REMOTE" "cd ~/$REMOTE_APP && $*"; fi
 }
 
 # Same, with a terminal attached — for anything interactive or long-running.
 remote_tty() {
-  $APP_SSH -t "$REMOTE" "cd ~/$REMOTE_APP && $*"
+  if [ "$ON_SERVER" = 1 ]; then bash -c "$*"; else $APP_SSH -t "$REMOTE" "cd ~/$REMOTE_APP && $*"; fi
 }
 
 need_param() {
@@ -86,7 +89,7 @@ confirm() {
 }
 
 echo =============================================================
-echo "Hi $(whoami)@$(hostname -s) — acting on $PROJECT ($REMOTE:~/$REMOTE_APP)"
+echo "Hi $(whoami)@$(hostname -s) — acting on $PROJECT ($WHERE)"
 echo What do you want to do?
 echo -------------------------------------------------------------
 echo "ROUTINE — day to day"
@@ -138,8 +141,13 @@ case "$SELECTION" in
 
   "20" )
   banner "DEPLOY: $PROJECT"
-  # The server only pulls, so the Vite bundle must be built here and
-  # committed. Rebuild first so a stale bundle cannot ship.
+  if [ "$ON_SERVER" = 1 ]; then
+    ./deploy.sh
+    log_history "Deployed $PROJECT"
+    exit $?
+  fi
+  # From a workstation: the server only pulls, so the Vite bundle must be
+  # built here and committed. Rebuild first so a stale bundle cannot ship.
   echo "→ npm run build"
   npm run build --silent || { echo "✗ build failed — not deploying"; exit 1; }
   if [ -n "$(git status --porcelain public_html/build)" ]; then
@@ -324,6 +332,7 @@ case "$SELECTION" in
 
   "90" )
   banner "COMMIT + PUSH"
+  [ "$ON_SERVER" = 1 ] && { echo "Commit from your workstation, not the server; the server only pulls (20)."; exit 0; }
   git status --short
   if [ -z "$(git status --porcelain)" ]; then
     echo "Nothing to commit."
@@ -352,12 +361,14 @@ case "$SELECTION" in
 
   "00" )
   banner "CONNECT: $REMOTE"
+  [ "$ON_SERVER" = 1 ] && { echo "You are already on the server ($(pwd))."; exit 0; }
   $APP_SSH "$REMOTE"
   ;;
 
 
   "01" )
   banner "FIRST-TIME SETUP on $REMOTE"
+  [ "$ON_SERVER" = 1 ] && { echo "Already set up here ($(pwd)). Run 20 to deploy or 36 to diagnose."; exit 0; }
   REPO_URL=$(git remote get-url origin)
   echo "Clones $REPO_URL into ~/$REMOTE_APP, installs dependencies, creates .env."
   echo "Afterwards set the domain's document root to ~/$REMOTE_APP/public_html"

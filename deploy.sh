@@ -87,7 +87,7 @@ main() {
         [ -f "$f" ] || { echo "✗ missing $f (the Vite build is committed; run ./cx.sh 20 locally)"; exit 1; }
     done
     echo "  assets      : present"
-    php artisan route:list --path=/ --columns=method,uri,name
+    php artisan route:list --except-vendor
 
     echo "✓ deployed $(git log --oneline -1)"
 }

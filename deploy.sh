@@ -43,6 +43,17 @@ env_value() {
 }
 
 pull() {
+    # Tracked files deleted on the server (a panel "clean up", a stray rm)
+    # stay deleted across pulls: git only merges, it does not restore. The
+    # symptom is a 403 on the home page because public_html/index.php and
+    # .htaccess are gone. Put them back before pulling.
+    DELETED=$(git ls-files -d)
+    if [ -n "$DELETED" ]; then
+        echo "→ restoring tracked files deleted on the server:"
+        echo "$DELETED" | sed 's/^/    /'
+        echo "$DELETED" | tr '\n' '\0' | xargs -0 git checkout --
+    fi
+
     echo "→ git pull"
     LOCK_BEFORE=$(git rev-parse HEAD:composer.lock 2>/dev/null || echo none)
     git pull --ff-only
@@ -139,7 +150,7 @@ verify() {
     echo "  document root for the domain must be: $(pwd)/public_html"
 
     for f in public_html/index.php public_html/.htaccess public_html/build/manifest.json public_html/icon.svg public_html/manifest.webmanifest; do
-        [ -f "$f" ] || { echo "✗ missing $f (the Vite build is committed; run ./cx.sh 20 locally)"; ok=0; }
+        [ -f "$f" ] || { echo "✗ missing $f — if 'git ls-files -d' lists it, run ./deploy.sh (restores it); if it is under build/, run ./cx.sh 20 on a workstation"; ok=0; }
     done
     echo "  assets      : $(ls public_html/build/assets 2>/dev/null | wc -l | tr -d ' ') files"
     echo "  php         : $(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)"

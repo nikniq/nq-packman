@@ -57,6 +57,11 @@ main() {
     chmod -R ug+rwX storage bootstrap/cache
     [ -L public_html/storage ] || php artisan storage:link >/dev/null 2>&1 || true
 
+    # The default .env uses SQLite; the file must exist before migrate runs.
+    if grep -qE '^DB_CONNECTION=sqlite' .env && ! grep -qE '^DB_DATABASE=' .env; then
+        [ -f database/database.sqlite ] || { echo "→ creating database/database.sqlite"; touch database/database.sqlite; }
+    fi
+
     echo "→ migrate"
     php artisan migrate --force
 

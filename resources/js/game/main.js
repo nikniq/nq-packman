@@ -3,6 +3,7 @@
 import { Sound } from './audio.js';
 import { Game, fruitForLevel } from './engine.js';
 import { COLS, DOWN, LEFT, RIGHT, ROWS, UP } from './maze.js';
+import { Online } from './online.js';
 import { Renderer, drawFruit } from './render.js';
 
 const STEP = 1 / 120;
@@ -50,11 +51,26 @@ export function boot() {
         fruits: document.getElementById('fruits'),
         pause: document.getElementById('pause'),
         mute: document.getElementById('mute'),
+        scores: document.getElementById('scores'),
+        board: document.getElementById('board'),
+        boardClose: document.getElementById('board-close'),
+        boardStatus: document.getElementById('board-status'),
+        boardList: document.getElementById('board-list'),
+        boardEmpty: document.getElementById('board-empty'),
     };
 
     const sound = new Sound();
     const renderer = new Renderer(canvas);
-    const game = new Game({ onEvent: (event) => sound.play(event), highScore: readHighScore() });
+    const online = new Online(window.PACKMAN_CONFIG ?? null);
+    const game = new Game({
+        onEvent: (event) => {
+            sound.play(event);
+            if (event === 'gameOver') {
+                submitScore();
+            }
+        },
+        highScore: readHighScore(),
+    });
     let paused = false;
     let savedHighScore = game.highScore;
 
@@ -121,6 +137,8 @@ export function boot() {
             if (!startIfWaiting() && paused) {
                 setPaused(false);
             }
+        } else if (key === 'Escape' && !hud.board.hidden) {
+            setBoardOpen(false);
         } else if (key === 'p' || key === 'Escape') {
             setPaused(!paused);
         } else if (key === 'm') {
@@ -173,7 +191,10 @@ export function boot() {
         },
         { passive: false },
     );
-    stage.addEventListener('click', () => {
+    stage.addEventListener('click', (event) => {
+        if (hud.board.contains(event.target)) {
+            return;
+        }
         if (!swiped && !startIfWaiting() && paused) {
             setPaused(false);
         }
@@ -248,6 +269,58 @@ export function boot() {
             sound.setAmbience('siren', game.dotsEaten / (game.dotsEaten + game.dotsLeft));
         }
     };
+
+    // ---- leaderboard -----------------------------------------------------
+
+    const renderBoard = () => {
+        hud.boardStatus.textContent = online.status;
+        hud.boardList.replaceChildren(
+            ...online.board.map((entry, index) => {
+                const item = document.createElement('li');
+                item.className = 'flex justify-between gap-3';
+                const name = document.createElement('span');
+                name.className = 'truncate';
+                name.textContent = `${String(index + 1).padStart(2, ' ')}. ${entry.name}`;
+                const score = document.createElement('span');
+                score.className = 'shrink-0 whitespace-nowrap';
+                score.textContent = `${entry.score}  L${entry.level}`;
+                item.append(name, score);
+
+                return item;
+            }),
+        );
+        hud.boardEmpty.hidden = online.board.length > 0;
+    };
+
+    const setBoardOpen = (open) => {
+        hud.board.hidden = !open;
+        hud.board.classList.toggle('hidden', !open);
+        hud.scores.setAttribute('aria-expanded', String(open));
+        if (open) {
+            renderBoard();
+            if (game.state === 'playing') {
+                setPaused(true);
+            }
+            hud.boardClose.focus();
+        } else {
+            hud.scores.blur();
+        }
+    };
+
+    const submitScore = async () => {
+        const score = game.score;
+        const level = game.level;
+        renderBoard();
+        await online.submit(score, level);
+        renderBoard();
+        if (online.status) {
+            setBoardOpen(true);
+        }
+    };
+
+    hud.scores.addEventListener('click', () => setBoardOpen(hud.board.hidden));
+    hud.boardClose.addEventListener('click', () => setBoardOpen(false));
+    online.loadBoard().then(renderBoard);
 
     // ---- HUD -------------------------------------------------------------
 

@@ -19,6 +19,10 @@ php artisan serve
 
 Arrow keys or WASD to move, or swipe on a touch screen. Enter or tap starts, P pauses, M toggles sound. The high score is kept in the browser.
 
+## Accounts and leaderboard
+
+Players can sign in with Google to save finished games to a world top 10. The game is fully playable without signing in. Sign-in is only offered when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in `.env`: create an OAuth client in the Google Cloud console with the authorised redirect URI `{APP_URL}/auth/google/callback`. There are no passwords; a Google account is linked to an existing email account only when Google reports the address as verified.
+
 ## Tests
 
 ```bash

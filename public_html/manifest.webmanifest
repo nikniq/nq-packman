@@ -1,12 +1,12 @@
 {
-    "name": "Packman",
-    "short_name": "Packman",
-    "description": "A maze chase arcade game.",
+    "name": "Night Market Run",
+    "short_name": "Night Market",
+    "description": "A maze chase arcade game set in a hawker night market.",
     "start_url": "/",
     "display": "standalone",
     "orientation": "portrait",
-    "background_color": "#000000",
-    "theme_color": "#000000",
+    "background_color": "#07040f",
+    "theme_color": "#07040f",
     "icons": [
         {
             "src": "/icon.svg",

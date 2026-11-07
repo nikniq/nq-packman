@@ -1,6 +1,10 @@
 // Game rules, with no DOM or canvas in sight so it can run under node --test.
 // The renderer reads this object's public fields; main.js feeds it input and
 // listens for events (for sound and the HUD).
+//
+// Night Market Run: a street cat (the player) races through a hawker night
+// market eating every satay stick while four rival cats give chase. A
+// durian turns the tables for a few seconds. Each level is a new market.
 
 import {
     COLS,
@@ -10,13 +14,13 @@ import {
     HOUSE_X,
     HOUSE_Y,
     LEFT,
-    MAP,
     PAC_START,
     ROWS,
     TUNNEL_ROW,
     UP,
     isOpposite,
-    isWall,
+    mazeForLevel,
+    seededRandom,
 } from './maze.js';
 
 const EPSILON = 1e-6;
@@ -33,30 +37,47 @@ const HOUSE_SPEED = 3.5;
 const MODE_SCHEDULE = [7, 20, 7, 20, 5, 20, 5, Infinity];
 
 const GHOST_POINTS = [200, 400, 800, 1600];
+// The bonus snack of each level, in order; the last repeats.
 const FRUITS = [
-    { name: 'cherry', points: 100 },
-    { name: 'strawberry', points: 300 },
-    { name: 'orange', points: 500 },
-    { name: 'apple', points: 700 },
-    { name: 'melon', points: 1000 },
-    { name: 'galaxian', points: 2000 },
-    { name: 'bell', points: 3000 },
-    { name: 'key', points: 5000 },
+    { name: 'kayaToast', points: 100 },
+    { name: 'satay', points: 300 },
+    { name: 'otah', points: 500 },
+    { name: 'laksa', points: 700 },
+    { name: 'chilliCrab', points: 1000 },
+    { name: 'bakKwa', points: 2000 },
+    { name: 'mooncake', points: 3000 },
+    { name: 'lantern', points: 5000 },
 ];
-const FRUIT_DOT_COUNTS = [70, 170];
+const FRUIT_DOT_FRACTIONS = [0.28, 0.68];
 const FRUIT_SECONDS = 9.5;
 const EXTRA_LIFE_SCORE = 10000;
 const COLLISION_DISTANCE = 0.7;
-// Blinky turns into "Cruise Elroy" near the end of a level: faster, and he
-// keeps chasing even while the others scatter.
-const ELROY_DOTS = 20;
-const ELROY_BOOST = [1.05, 1.1];
+// Scar gets hungry near the end of a level: faster, and he keeps chasing
+// even while the others scatter.
+const HUNGRY_DOTS = 20;
+const HUNGRY_BOOST = [1.05, 1.1];
 
-const GHOST_SETUP = [
-    { name: 'blinky', x: HOUSE_X, y: DOOR_Y, corner: { x: 25, y: -3 }, inHouse: false },
-    { name: 'pinky', x: HOUSE_X, y: HOUSE_Y, corner: { x: 2, y: -3 }, inHouse: true },
-    { name: 'inky', x: HOUSE_X - 2, y: HOUSE_Y, corner: { x: 27, y: 31 }, inHouse: true },
-    { name: 'clyde', x: HOUSE_X + 2, y: HOUSE_Y, corner: { x: 0, y: 31 }, inHouse: true },
+// Power-ups: one appears per level, somewhere quiet, once a third of the
+// snacks are gone. Each is a different way out of a tight spot.
+export const POWER_UPS = {
+    freeze: { label: 'FREEZE', seconds: 3 },
+    phase: { label: 'PHASE', seconds: 10 },
+    decoy: { label: 'DECOY', seconds: 6 },
+    magnet: { label: 'MAGNET', seconds: 8 },
+};
+const POWER_UP_ORDER = ['freeze', 'magnet', 'decoy', 'phase'];
+const POWER_UP_SPAWN_FRACTION = 0.33;
+const POWER_UP_SECONDS = 12;
+const POWER_UP_POINTS = 150;
+const MAGNET_RADIUS = 2;
+const PHASE_REACH = 3;
+
+// The four rivals: who they are and where they lurk when scattering.
+export const GHOST_SETUP = [
+    { name: 'scar', x: HOUSE_X, y: DOOR_Y, corner: { x: 25, y: -3 }, inHouse: false },
+    { name: 'misty', x: HOUSE_X, y: HOUSE_Y, corner: { x: 2, y: -3 }, inHouse: true },
+    { name: 'bolt', x: HOUSE_X - 2, y: HOUSE_Y, corner: { x: 27, y: 31 }, inHouse: true },
+    { name: 'dozy', x: HOUSE_X + 2, y: HOUSE_Y, corner: { x: 0, y: 31 }, inHouse: true },
 ];
 
 function isAtCentre(entity) {
@@ -71,11 +92,18 @@ export function fruitForLevel(level) {
     return FRUITS[Math.min(level, FRUITS.length) - 1];
 }
 
+export function powerUpForLevel(level) {
+    return POWER_UP_ORDER[(level - 1) % POWER_UP_ORDER.length];
+}
+
 export class Game {
-    constructor({ onEvent = () => {}, random = Math.random, highScore = 0 } = {}) {
+    // `run` names the course: 'classic' plays the shared mazes, anything
+    // else (a date, for the daily run) seeds its own mazes and chase.
+    constructor({ onEvent = () => {}, random = null, highScore = 0, run = 'classic' } = {}) {
         this.onEvent = onEvent;
-        this.random = random;
         this.highScore = highScore;
+        this.run = run;
+        this.random = random ?? seededRandom(`${run}:chase`);
         this.state = 'title';
         this.stateTime = 0;
         this.clock = 0;
@@ -83,13 +111,16 @@ export class Game {
         this.level = 1;
         this.lives = 3;
         this.popups = [];
+        this.humanGhost = null;
         this.resetMaze();
         this.resetActors(false);
     }
 
     // ---- lifecycle -------------------------------------------------------
 
-    start() {
+    start(run = this.run) {
+        this.run = run;
+        this.random = seededRandom(`${run}:chase`);
         this.score = 0;
         this.level = 1;
         this.lives = 3;
@@ -106,17 +137,29 @@ export class Game {
         this.stateTime = 0;
     }
 
+    get isDaily() {
+        return this.run !== 'classic';
+    }
+
     resetMaze() {
-        this.dots = MAP.map((row) => row.split('').map((tile) => (tile === '.' || tile === 'o' ? tile : '')));
-        this.dotsLeft = this.dots.flat().filter(Boolean).length;
+        this.maze = mazeForLevel(this.level, this.run);
+        this.dots = this.maze.map.map((row) => row.split('').map((tile) => (tile === '.' || tile === 'o' ? tile : '')));
+        this.dotsLeft = this.maze.dotCount;
         this.dotsEaten = 0;
         this.fruit = null;
+        this.fruitAt = FRUIT_DOT_FRACTIONS.map((fraction) => Math.round(this.dotsLeft * fraction));
+        this.powerUp = null;
+        this.powerUpSpawned = false;
+        this.powerUpAt = Math.round(this.dotsLeft * POWER_UP_SPAWN_FRACTION);
+        this.effects = {};
+        this.decoy = null;
+        this.phaseCharge = false;
     }
 
     resetActors(afterDeath) {
         this.pac = { x: PAC_START.x, y: PAC_START.y, dir: LEFT, want: LEFT, moving: false };
-        // After a death the house empties faster so the player is not left
-        // alone with Blinky for long.
+        // After a death the den empties faster so the player is not left
+        // alone with Scar for long.
         const releaseAt = afterDeath || this.level > 2 ? [0, 0, 8, 16] : [0, 0, 30, 60];
         this.ghosts = GHOST_SETUP.map((setup, index) => ({
             name: setup.name,
@@ -125,6 +168,7 @@ export class Game {
             homeX: setup.x,
             corner: setup.corner,
             dir: setup.inHouse ? UP : LEFT,
+            want: null,
             state: setup.inHouse ? 'house' : 'active',
             frightened: false,
             releaseAt: releaseAt[index],
@@ -137,6 +181,8 @@ export class Game {
         this.ghostCombo = 0;
         this.popups = [];
         this.fruit = null;
+        this.effects = {};
+        this.decoy = null;
     }
 
     get mode() {
@@ -152,17 +198,42 @@ export class Game {
     }
 
     isElroy(ghost) {
-        return ghost.name === 'blinky' && this.dotsLeft <= ELROY_DOTS && !this.ghosts.some((other) => other.state === 'house');
+        return ghost.name === 'scar' && this.dotsLeft <= HUNGRY_DOTS && !this.ghosts.some((other) => other.state === 'house');
     }
 
     get frightDuration() {
         return Math.max(1.5, 7 - (this.level - 1) * 0.75);
     }
 
+    isWall(col, row) {
+        return this.maze.isWall(col, row);
+    }
+
     // ---- input -----------------------------------------------------------
 
     steer(direction) {
         this.pac.want = direction;
+    }
+
+    // Player two steers whichever rival they have taken over.
+    steerGhost(direction) {
+        const ghost = this.humanGhost;
+        if (!ghost) {
+            return;
+        }
+        ghost.want = direction;
+        if (ghost.state === 'active' && ghost.dir && isOpposite(direction, ghost.dir)) {
+            ghost.dir = direction;
+        }
+    }
+
+    // Hand player two the next rival (Tab), or none after the last.
+    cycleHumanGhost() {
+        const index = this.humanGhost ? this.ghosts.indexOf(this.humanGhost) + 1 : 0;
+        this.humanGhost = index < this.ghosts.length ? this.ghosts[index] : null;
+        this.onEvent('player2', this.humanGhost?.name ?? null);
+
+        return this.humanGhost;
     }
 
     // ---- main update -----------------------------------------------------
@@ -196,6 +267,7 @@ export class Game {
                     this.level += 1;
                     this.resetMaze();
                     this.resetActors(false);
+                    this.humanGhost = this.humanGhost ? this.ghosts[GHOST_SETUP.findIndex((setup) => setup.name === this.humanGhost.name)] : null;
                     this.setState('ready');
                     this.onEvent('level', this.level);
                 }
@@ -216,7 +288,9 @@ export class Game {
         if (this.state !== 'playing') {
             return;
         }
-        this.ghosts.forEach((ghost) => this.moveGhost(ghost, dt));
+        if (!this.effects.freeze) {
+            this.ghosts.forEach((ghost) => this.moveGhost(ghost, dt));
+        }
         this.checkCollisions();
     }
 
@@ -241,8 +315,23 @@ export class Game {
         if (this.fruit && (this.fruit.ttl -= dt) <= 0) {
             this.fruit = null;
         }
+        if (this.powerUp && (this.powerUp.ttl -= dt) <= 0) {
+            this.powerUp = null;
+        }
+        for (const name of Object.keys(this.effects)) {
+            if ((this.effects[name] -= dt) <= 0) {
+                delete this.effects[name];
+                if (name === 'decoy') {
+                    this.decoy = null;
+                }
+                this.onEvent('effectEnd', name);
+            }
+        }
+        if (this.effects.magnet) {
+            this.magnetise();
+        }
 
-        // A waiting ghost leaves once enough dots are eaten, or when the
+        // A waiting rival leaves once enough snacks are eaten, or when the
         // player stops eating for a few seconds.
         this.sinceLastDot += dt;
         const waiting = this.ghosts.find((ghost) => ghost.state === 'house');
@@ -267,7 +356,7 @@ export class Game {
                     entity.x = -1;
                 }
                 decide(entity);
-                if (!entity.dir || isWall(entity.x + entity.dir.x, entity.y + entity.dir.y)) {
+                if (!entity.dir || this.isWall(entity.x + entity.dir.x, entity.y + entity.dir.y)) {
                     entity.moving = false;
 
                     return;
@@ -296,10 +385,40 @@ export class Game {
             pac.dir = pac.want;
         }
         this.advance(pac, PAC_SPEED * this.speedFactor * dt, () => {
-            if (!isWall(pac.x + pac.want.x, pac.y + pac.want.y)) {
+            if (!this.isWall(pac.x + pac.want.x, pac.y + pac.want.y)) {
+                pac.dir = pac.want;
+            } else if (this.effects.phase && this.phaseThrough(pac.want)) {
                 pac.dir = pac.want;
             }
         });
+    }
+
+    // With PHASE active the cat slips through one stall: if open floor lies
+    // within a few tiles in the wanted direction, jump straight to it.
+    phaseThrough(direction) {
+        const pac = this.pac;
+        for (let reach = 2; reach <= PHASE_REACH + 1; reach += 1) {
+            const col = pac.x + direction.x * reach;
+            const row = pac.y + direction.y * reach;
+            if (col < 1 || col >= COLS - 1 || row < 1 || row >= ROWS - 1) {
+                return false;
+            }
+            if (this.maze.isOpen(col, row) && this.maze.tileAt(col, row) !== '-' && !this.insideDen(col, row)) {
+                this.popups.push({ x: pac.x, y: pac.y, text: 'ZIP', ttl: 0.6 });
+                pac.x = col;
+                pac.y = row;
+                delete this.effects.phase;
+                this.onEvent('phase');
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    insideDen(col, row) {
+        return col > 10 && col < 17 && row > 12 && row < 16;
     }
 
     moveGhost(ghost, dt) {
@@ -354,7 +473,7 @@ export class Game {
         }
 
         if (this.isElroy(ghost)) {
-            return GHOST_SPEED * this.speedFactor * ELROY_BOOST[this.dotsLeft <= ELROY_DOTS / 2 ? 1 : 0];
+            return GHOST_SPEED * this.speedFactor * HUNGRY_BOOST[this.dotsLeft <= HUNGRY_DOTS / 2 ? 1 : 0];
         }
 
         return GHOST_SPEED * this.speedFactor;
@@ -369,10 +488,21 @@ export class Game {
         }
 
         const options = DIRECTIONS.filter(
-            (dir) => !isOpposite(dir, ghost.dir) && !isWall(ghost.x + dir.x, ghost.y + dir.y),
+            (dir) => !isOpposite(dir, ghost.dir) && !this.isWall(ghost.x + dir.x, ghost.y + dir.y),
         );
         if (options.length === 0) {
             ghost.dir = { x: -ghost.dir.x, y: -ghost.dir.y };
+
+            return;
+        }
+        if (ghost === this.humanGhost && ghost.state === 'active') {
+            // Player two: take the wanted turn when it is open, otherwise
+            // carry straight on, and only turn at a fork when forced.
+            if (ghost.want && options.includes(ghost.want)) {
+                ghost.dir = ghost.want;
+            } else if (!options.includes(ghost.dir)) {
+                ghost.dir = options[0];
+            }
 
             return;
         }
@@ -395,7 +525,8 @@ export class Game {
         ghost.dir = best;
     }
 
-    // Each ghost has its own idea of where the player is going.
+    // Each rival has its own idea of where the player is going. A decoy
+    // takes the player's place in every calculation while it lasts.
     ghostTarget(ghost) {
         if (ghost.state === 'eyes') {
             return { x: 13, y: DOOR_Y };
@@ -404,20 +535,20 @@ export class Game {
             return ghost.corner;
         }
 
-        const pac = this.pac;
+        const pac = this.decoy ?? this.pac;
         const px = Math.round(pac.x);
         const py = Math.round(pac.y);
         switch (ghost.name) {
-            case 'pinky':
+            case 'misty':
                 return { x: px + pac.dir.x * 4, y: py + pac.dir.y * 4 };
-            case 'inky': {
-                const blinky = this.ghosts[0];
+            case 'bolt': {
+                const scar = this.ghosts[0];
                 const aheadX = px + pac.dir.x * 2;
                 const aheadY = py + pac.dir.y * 2;
 
-                return { x: aheadX * 2 - Math.round(blinky.x), y: aheadY * 2 - Math.round(blinky.y) };
+                return { x: aheadX * 2 - Math.round(scar.x), y: aheadY * 2 - Math.round(scar.y) };
             }
-            case 'clyde':
+            case 'dozy':
                 return squaredDistance(ghost.x, ghost.y, px, py) > 64 ? { x: px, y: py } : ghost.corner;
             default:
                 return { x: px, y: py };
@@ -432,34 +563,42 @@ export class Game {
 
     // ---- eating and collisions -------------------------------------------
 
+    eatDot(col, row) {
+        const dot = row >= 0 && row < ROWS && col >= 0 && col < COLS ? this.dots[row][col] : '';
+        if (!dot) {
+            return false;
+        }
+        this.dots[row][col] = '';
+        this.dotsLeft -= 1;
+        this.dotsEaten += 1;
+        this.releaseCounter += 1;
+        this.sinceLastDot = 0;
+        if (dot === 'o') {
+            this.addScore(50);
+            this.startFright();
+        } else {
+            this.addScore(10);
+            this.onEvent('dot');
+        }
+        if (this.fruitAt.includes(this.dotsEaten)) {
+            this.fruit = { ...fruitForLevel(this.level), ttl: FRUIT_SECONDS };
+        }
+        if (!this.powerUpSpawned && this.dotsEaten >= this.powerUpAt) {
+            this.spawnPowerUp();
+        }
+        if (this.dotsLeft === 0) {
+            this.setState('levelClear');
+            this.onEvent('levelClear');
+        }
+
+        return true;
+    }
+
     eatAtPac() {
         const pac = this.pac;
-        const col = Math.round(pac.x);
-        const row = Math.round(pac.y);
-        const dot = row >= 0 && row < ROWS && col >= 0 && col < COLS ? this.dots[row][col] : '';
-
-        if (dot) {
-            this.dots[row][col] = '';
-            this.dotsLeft -= 1;
-            this.dotsEaten += 1;
-            this.releaseCounter += 1;
-            this.sinceLastDot = 0;
-            if (dot === 'o') {
-                this.addScore(50);
-                this.startFright();
-            } else {
-                this.addScore(10);
-                this.onEvent('dot');
-            }
-            if (FRUIT_DOT_COUNTS.includes(this.dotsEaten)) {
-                this.fruit = { ...fruitForLevel(this.level), ttl: FRUIT_SECONDS };
-            }
-            if (this.dotsLeft === 0) {
-                this.setState('levelClear');
-                this.onEvent('levelClear');
-
-                return;
-            }
+        this.eatDot(Math.round(pac.x), Math.round(pac.y));
+        if (this.state !== 'playing') {
+            return;
         }
 
         if (this.fruit && squaredDistance(pac.x, pac.y, FRUIT_POS.x, FRUIT_POS.y) < 0.5) {
@@ -468,6 +607,50 @@ export class Game {
             this.fruit = null;
             this.onEvent('fruit');
         }
+
+        if (this.powerUp && squaredDistance(pac.x, pac.y, this.powerUp.x, this.powerUp.y) < 0.5) {
+            this.activatePowerUp(this.powerUp);
+        }
+    }
+
+    // MAGNET pulls in every snack within reach, one tile per tick so the
+    // score ticks up visibly instead of jumping.
+    magnetise() {
+        const col = Math.round(this.pac.x);
+        const row = Math.round(this.pac.y);
+        for (let dy = -MAGNET_RADIUS; dy <= MAGNET_RADIUS; dy += 1) {
+            for (let dx = -MAGNET_RADIUS; dx <= MAGNET_RADIUS; dx += 1) {
+                if (dx * dx + dy * dy <= MAGNET_RADIUS * MAGNET_RADIUS && this.eatDot(col + dx, row + dy)) {
+                    return;
+                }
+            }
+        }
+    }
+
+    // ---- power-ups ---------------------------------------------------------
+
+    spawnPowerUp() {
+        this.powerUpSpawned = true;
+        const pac = this.pac;
+        const spots = this.maze.openTiles(
+            (col, row) => row !== TUNNEL_ROW && !this.insideDen(col, row) && squaredDistance(col, row, pac.x, pac.y) > 64,
+        );
+        if (spots.length === 0) {
+            return;
+        }
+        const spot = spots[Math.floor(this.random() * spots.length)];
+        this.powerUp = { kind: powerUpForLevel(this.level), x: spot.x, y: spot.y, ttl: POWER_UP_SECONDS };
+    }
+
+    activatePowerUp({ kind, x, y }) {
+        this.powerUp = null;
+        this.addScore(POWER_UP_POINTS);
+        this.effects[kind] = POWER_UPS[kind].seconds;
+        this.popups.push({ x, y, text: POWER_UPS[kind].label, ttl: 1.2 });
+        if (kind === 'decoy') {
+            this.decoy = { x: this.pac.x, y: this.pac.y, dir: this.pac.dir };
+        }
+        this.onEvent('powerUp', kind);
     }
 
     startFright() {
@@ -527,7 +710,9 @@ export class Game {
 
             return;
         }
+        const humanName = this.humanGhost?.name;
         this.resetActors(true);
+        this.humanGhost = humanName ? this.ghosts.find((ghost) => ghost.name === humanName) : null;
         this.setState('ready');
     }
 }

@@ -20,6 +20,16 @@ class ScoreFactory extends Factory
             'user_id' => User::factory(),
             'score' => fake()->numberBetween(10, 50000),
             'level' => fake()->numberBetween(1, 12),
+            'run' => 'classic',
+            'day' => null,
         ];
+    }
+
+    /**
+     * A score on today's daily run.
+     */
+    public function daily(?string $day = null): static
+    {
+        return $this->state(fn () => ['run' => 'daily', 'day' => $day ?? Score::today()]);
     }
 }

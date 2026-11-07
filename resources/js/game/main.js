@@ -1,13 +1,14 @@
 // Wires the engine to the page: input, the frame loop, the HUD and sound.
 
 import { Sound } from './audio.js';
-import { Game, fruitForLevel } from './engine.js';
+import { Game, POWER_UPS, fruitForLevel, powerUpForLevel } from './engine.js';
 import { COLS, DOWN, LEFT, RIGHT, ROWS, UP } from './maze.js';
 import { Online } from './online.js';
-import { Renderer, drawFruit } from './render.js';
+import { Renderer, drawFruit, drawPowerUp } from './render.js';
 
 const STEP = 1 / 120;
-const HIGH_SCORE_KEY = 'packman.highScore';
+const HIGH_SCORE_KEY = 'nightmarket.highScore';
+const DAILY_KEY = 'nightmarket.daily';
 const SWIPE_DISTANCE = 18;
 const KEYS = {
     ArrowUp: UP,
@@ -19,6 +20,8 @@ const KEYS = {
     s: DOWN,
     d: RIGHT,
 };
+// Player two steers their cat with IJKL (or the numpad).
+const P2_KEYS = { i: UP, j: LEFT, k: DOWN, l: RIGHT, 8: UP, 4: LEFT, 2: DOWN, 6: RIGHT };
 
 function readHighScore() {
     try {
@@ -33,6 +36,24 @@ function writeHighScore(score) {
         window.localStorage.setItem(HIGH_SCORE_KEY, String(score));
     } catch {
         // The high score just won't survive a reload.
+    }
+}
+
+// Guests get one daily attempt per browser; signed-in players are held to
+// one per account by the server.
+function readDailyPlayed(today) {
+    try {
+        return window.localStorage.getItem(DAILY_KEY) === today;
+    } catch {
+        return false;
+    }
+}
+
+function writeDailyPlayed(today) {
+    try {
+        window.localStorage.setItem(DAILY_KEY, today);
+    } catch {
+        // Not persisted; the server still enforces it for signed-in players.
     }
 }
 
@@ -52,16 +73,20 @@ export function boot() {
         pause: document.getElementById('pause'),
         mute: document.getElementById('mute'),
         scores: document.getElementById('scores'),
+        daily: document.getElementById('daily'),
+        powerUp: document.getElementById('power-up'),
+        powerUpLabel: document.getElementById('power-up-label'),
         board: document.getElementById('board'),
         boardClose: document.getElementById('board-close'),
         boardStatus: document.getElementById('board-status'),
         boardList: document.getElementById('board-list'),
         boardEmpty: document.getElementById('board-empty'),
+        boardTabs: Array.from(document.querySelectorAll('[data-board]')),
     };
 
     const sound = new Sound();
     const renderer = new Renderer(canvas);
-    const online = new Online(window.PACKMAN_CONFIG ?? null);
+    const online = new Online(window.NIGHT_MARKET_CONFIG ?? null);
     const game = new Game({
         onEvent: (event) => {
             sound.play(event);
@@ -73,6 +98,8 @@ export function boot() {
     });
     let paused = false;
     let savedHighScore = game.highScore;
+    let boardRun = 'classic';
+    const dailyPlayed = () => online.dailyPlayed || readDailyPlayed(online.today);
 
     // ---- sizing ----------------------------------------------------------
 
@@ -94,17 +121,35 @@ export function boot() {
 
     const canStart = () => game.state === 'title' || (game.state === 'gameOver' && game.stateTime > 1);
 
-    const startIfWaiting = () => {
+    const startIfWaiting = (run = 'classic') => {
         sound.unlock();
-        if (canStart()) {
-            paused = false;
-            game.start();
-
-            return true;
+        if (!canStart()) {
+            return false;
         }
+        if (run !== 'classic') {
+            if (dailyPlayed()) {
+                boardRun = 'daily';
+                online.status = 'DAILY RUN DONE · BACK TOMORROW';
+                setBoardOpen(true);
 
-        return false;
+                return false;
+            }
+            writeDailyPlayed(online.today);
+        }
+        paused = false;
+        game.start(run);
+        updateDailyLabel();
+
+        return true;
     };
+
+    const updateDailyLabel = () => {
+        const done = dailyPlayed();
+        hud.daily.textContent = done ? 'DAILY DONE' : 'DAILY';
+        hud.daily.setAttribute('aria-disabled', String(done));
+        hud.daily.title = done ? "You have played today's run. A new course opens at midnight (Singapore time)." : "One attempt a day on today's course, same for everyone.";
+    };
+    updateDailyLabel();
 
     const setPaused = (value) => {
         const playing = game.state !== 'title' && game.state !== 'gameOver';
@@ -124,10 +169,20 @@ export function boot() {
             return;
         }
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-        if (KEYS[key]) {
+        if (key === 'd' && canStart()) {
+            event.preventDefault();
+            startIfWaiting('daily');
+        } else if (KEYS[key]) {
             event.preventDefault();
             sound.unlock();
             game.steer(KEYS[key]);
+        } else if (P2_KEYS[key] && game.humanGhost) {
+            event.preventDefault();
+            game.steerGhost(P2_KEYS[key]);
+        } else if (key === 'Tab') {
+            event.preventDefault();
+            sound.unlock();
+            game.cycleHumanGhost();
         } else if (key === 'Enter' || key === ' ') {
             // Leave Space/Enter alone when a button has focus.
             if (document.activeElement instanceof HTMLButtonElement) {
@@ -147,6 +202,10 @@ export function boot() {
         }
     });
 
+    hud.daily.addEventListener('click', () => {
+        startIfWaiting('daily');
+        hud.daily.blur();
+    });
     hud.pause.addEventListener('click', () => {
         sound.unlock();
         setPaused(!paused);
@@ -249,13 +308,40 @@ export function boot() {
         hud.fruits.height = FRUIT_SIZE * ratio;
         hud.fruits.style.width = `${count * FRUIT_SIZE}px`;
         hud.fruits.style.height = `${FRUIT_SIZE}px`;
-        hud.fruits.setAttribute('aria-label', `Bonus fruit: ${fruitForLevel(level).name}`);
+        hud.fruits.setAttribute('aria-label', `Bonus snack: ${fruitForLevel(level).name}; power-up: ${powerUpForLevel(level)}`);
         const ctx = hud.fruits.getContext('2d');
         const scale = (FRUIT_SIZE * ratio) / 1.6;
         for (let index = 0; index < count; index += 1) {
             ctx.setTransform(scale, 0, 0, scale, (index + 0.5) * FRUIT_SIZE * ratio, (FRUIT_SIZE * ratio) / 2);
             drawFruit(ctx, fruitForLevel(first + index).name);
         }
+    };
+
+    // The power-up badge shows what is active, or what this level offers.
+    let shownPowerUp = '';
+    const updatePowerUp = () => {
+        const active = Object.keys(game.effects)[0] ?? null;
+        const kind = active ?? (game.powerUp?.kind ?? null);
+        const key = `${kind}:${active ? Math.ceil(game.effects[active]) : 0}`;
+        if (key === shownPowerUp) {
+            return;
+        }
+        shownPowerUp = key;
+        hud.powerUp.hidden = !kind;
+        if (!kind) {
+            return;
+        }
+        hud.powerUpLabel.textContent = active ? `${POWER_UPS[active].label} ${Math.ceil(game.effects[active])}` : POWER_UPS[kind].label;
+        const ratio = window.devicePixelRatio || 1;
+        const size = 20;
+        const canvas = hud.powerUp.querySelector('canvas');
+        canvas.width = size * ratio;
+        canvas.height = size * ratio;
+        canvas.style.width = `${size}px`;
+        canvas.style.height = `${size}px`;
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform((size * ratio) / 1.4, 0, 0, (size * ratio) / 1.4, (size * ratio) / 2, (size * ratio) / 2);
+        drawPowerUp(ctx, kind, 0);
     };
 
     const updateAmbience = () => {
@@ -274,8 +360,14 @@ export function boot() {
 
     const renderBoard = () => {
         hud.boardStatus.textContent = online.status;
+        hud.boardTabs.forEach((tab) => {
+            const selected = tab.dataset.board === boardRun;
+            tab.setAttribute('aria-selected', String(selected));
+            tab.classList.toggle('is-selected', selected);
+        });
+        const board = online.board(boardRun);
         hud.boardList.replaceChildren(
-            ...online.board.map((entry, index) => {
+            ...board.map((entry, index) => {
                 const item = document.createElement('li');
                 item.className = 'flex justify-between gap-3';
                 const name = document.createElement('span');
@@ -289,8 +381,15 @@ export function boot() {
                 return item;
             }),
         );
-        hud.boardEmpty.hidden = online.board.length > 0;
+        hud.boardEmpty.hidden = board.length > 0;
     };
+
+    hud.boardTabs.forEach((tab) =>
+        tab.addEventListener('click', () => {
+            boardRun = tab.dataset.board;
+            renderBoard();
+        }),
+    );
 
     const setBoardOpen = (open) => {
         hud.board.hidden = !open;
@@ -310,9 +409,12 @@ export function boot() {
     const submitScore = async () => {
         const score = game.score;
         const level = game.level;
+        const run = game.isDaily ? 'daily' : 'classic';
+        boardRun = run;
         renderBoard();
-        await online.submit(score, level);
+        await online.submit(score, level, run);
         renderBoard();
+        updateDailyLabel();
         if (online.status) {
             setBoardOpen(true);
         }
@@ -320,7 +422,7 @@ export function boot() {
 
     hud.scores.addEventListener('click', () => setBoardOpen(hud.board.hidden));
     hud.boardClose.addEventListener('click', () => setBoardOpen(false));
-    online.loadBoard().then(renderBoard);
+    online.loadBoards().then(renderBoard);
 
     // ---- HUD -------------------------------------------------------------
 
@@ -372,6 +474,7 @@ export function boot() {
         }
         pollGamepad();
         updateHud();
+        updatePowerUp();
         updateAmbience();
         renderer.draw(game, paused);
         requestAnimationFrame(frame);

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One finished game, recorded for the world leaderboard.
  */
-#[Fillable(['score', 'level'])]
+#[Fillable(['score', 'level', 'run', 'day'])]
 class Score extends Model
 {
     /** @use HasFactory<ScoreFactory> */
@@ -26,11 +26,24 @@ class Score extends Model
     }
 
     /**
-     * Position of this score on the world board: 1 + the number of higher scores.
+     * Today's date for the daily run. Runs change over at midnight in
+     * Singapore, where the market is.
+     */
+    public static function today(): string
+    {
+        return now('Asia/Singapore')->toDateString();
+    }
+
+    /**
+     * Position of this score on its board: 1 + the number of higher scores
+     * on the same run (and, for the daily run, the same day).
      */
     public function rank(): int
     {
-        return static::where('score', '>', $this->score)->count() + 1;
+        return static::where('run', $this->run)
+            ->when($this->day !== null, fn ($query) => $query->whereDate('day', $this->day))
+            ->where('score', '>', $this->score)
+            ->count() + 1;
     }
 
     /**
@@ -41,6 +54,7 @@ class Score extends Model
         return [
             'score' => 'integer',
             'level' => 'integer',
+            'day' => 'date:Y-m-d',
         ];
     }
 }

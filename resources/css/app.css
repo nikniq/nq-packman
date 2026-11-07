@@ -6,11 +6,13 @@
 @theme {
     --font-arcade: 'Press Start 2P', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
+    --color-night: #07040f;
     --color-arcade-white: #f4f4ff;
     --color-arcade-dim: #8a8fb8;
-    --color-arcade-red: #ff2b1c;
-    --color-arcade-yellow: #ffe600;
-    --color-arcade-blue: #2a3cff;
+    --color-arcade-red: #ff3b3b;
+    --color-arcade-yellow: #ffd23f;
+    --color-arcade-blue: #ff7a1a;
+    --color-arcade-cream: #fff1c9;
 }
 
 @layer base {
@@ -40,11 +42,53 @@
         outline-offset: 2px;
     }
 
-    /* A spare life: a yellow disc with a wedge cut out for the mouth. */
+    .arcade-button[aria-disabled='true'] {
+        border-color: var(--color-arcade-dim);
+        color: var(--color-arcade-dim);
+    }
+
+    .board-tab {
+        padding: 0.25rem 0.5rem;
+        border-bottom: 2px solid transparent;
+        color: var(--color-arcade-dim);
+        cursor: pointer;
+    }
+
+    .board-tab.is-selected,
+    .board-tab[aria-selected='true'] {
+        border-bottom-color: var(--color-arcade-yellow);
+        color: var(--color-arcade-white);
+    }
+
+    /* A spare life: a cream cat face with two ears. */
     .life {
+        position: relative;
         width: 1rem;
         height: 1rem;
+        margin-top: 0.25rem;
         border-radius: 9999px;
-        background: conic-gradient(from 120deg, var(--color-arcade-yellow) 0 300deg, transparent 300deg);
+        background: var(--color-arcade-cream);
+    }
+
+    .life::before,
+    .life::after {
+        content: '';
+        position: absolute;
+        top: -0.3rem;
+        width: 0;
+        height: 0;
+        border-left: 0.25rem solid transparent;
+        border-right: 0.25rem solid transparent;
+        border-bottom: 0.45rem solid var(--color-arcade-cream);
+    }
+
+    .life::before {
+        left: 0.05rem;
+        transform: rotate(-20deg);
+    }
+
+    .life::after {
+        right: 0.05rem;
+        transform: rotate(20deg);
     }
 }

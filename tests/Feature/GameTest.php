@@ -30,7 +30,7 @@ class GameTest extends TestCase
     {
         $response = $this->get('/');
 
-        foreach (['score', 'high-score', 'level', 'lives', 'fruits', 'scores', 'board', 'pause', 'mute', 'stage'] as $id) {
+        foreach (['score', 'high-score', 'level', 'lives', 'fruits', 'power-up', 'daily', 'scores', 'board', 'pause', 'mute', 'stage'] as $id) {
             $response->assertSee('id="'.$id.'"', false);
         }
     }
@@ -72,8 +72,8 @@ class GameTest extends TestCase
 
     public function test_page_title_uses_the_app_name(): void
     {
-        config(['app.name' => 'Packman']);
+        config(['app.name' => 'Night Market Run']);
 
-        $this->get('/')->assertSee('<title>Packman</title>', false);
+        $this->get('/')->assertSee('<title>Night Market Run</title>', false);
     }
 }

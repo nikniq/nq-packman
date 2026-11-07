@@ -1,7 +1,7 @@
 // Sound effects synthesised with Web Audio, so there are no files to ship.
 // The context is created on the first user gesture, as browsers require.
 
-const STORAGE_KEY = 'packman.muted';
+const STORAGE_KEY = 'nightmarket.muted';
 
 export class Sound {
     constructor() {
@@ -125,6 +125,16 @@ export class Sound {
                 [392, 523, 659, 784, 659, 784].forEach((pitch, index) =>
                     this.tone(pitch, pitch, 0.13, { delay: index * 0.14, volume: 0.07 }),
                 );
+                break;
+            case 'powerUp':
+                [660, 880, 1320].forEach((pitch, index) => this.tone(pitch, pitch * 1.2, 0.09, { delay: index * 0.08, type: 'triangle' }));
+                break;
+            case 'phase':
+                this.tone(300, 2400, 0.18, { type: 'sine', volume: 0.08 });
+                break;
+            case 'player2':
+                this.tone(440, 440, 0.06, { type: 'square', volume: 0.05 });
+                this.tone(660, 660, 0.06, { type: 'square', volume: 0.05, delay: 0.07 });
                 break;
             case 'levelClear':
                 [523, 659, 784, 1047].forEach((pitch, index) => this.tone(pitch, pitch, 0.16, { delay: index * 0.16 }));

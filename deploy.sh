@@ -153,7 +153,24 @@ verify() {
         [ -f "$f" ] || { echo "✗ missing $f — if 'git ls-files -d' lists it, run ./deploy.sh (restores it); if it is under build/, run ./cx.sh 20 on a workstation"; ok=0; }
     done
     echo "  assets      : $(ls public_html/build/assets 2>/dev/null | wc -l | tr -d ' ') files"
-    echo "  php         : $(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)"
+    echo "  php (cli)   : $(php -r 'echo PHP_VERSION;' 2>/dev/null || echo unknown)"
+
+    # The web server may run a different PHP than the shell (SiteGround's
+    # PHP Manager sets it per domain). composer.lock needs >= 8.4; an older
+    # web PHP shows "Composer detected issues in your platform" to visitors.
+    if [ -n "$APP_URL" ] && command -v curl >/dev/null 2>&1; then
+        PROBE="public_html/.phpv-$$.php"
+        echo '<?php echo PHP_VERSION;' > "$PROBE"
+        WEB_PHP=$(curl -sS --max-time 20 "$APP_URL/$(basename "$PROBE")" 2>/dev/null || true)
+        rm -f "$PROBE"
+        case "$WEB_PHP" in
+            8.[4-9].*|8.[1-9][0-9].*|9.*) echo "  php (web)   : $WEB_PHP" ;;
+            [0-9]*) echo "  php (web)   : $WEB_PHP"
+                    echo "  ✗ web PHP is older than 8.4 — Site Tools → Devs → PHP Manager → $(echo "$APP_URL" | sed 's#https\?://##') → choose PHP 8.4+"
+                    ok=0 ;;
+            *)      echo "  php (web)   : (probe not served — document root or DNS issue)" ;;
+        esac
+    fi
 
     # --- live request -------------------------------------------------------
     # Hit the real URL from the server. This is what tells a Laravel problem
